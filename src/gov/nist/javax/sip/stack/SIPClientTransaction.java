@@ -1573,7 +1573,7 @@ public class SIPClientTransaction extends SIPTransaction implements ServerRespon
             // Test added to make sure the retrans flag is correct on forked responses
             // this will avoid setting the last response on the dialog and chnage its state
             // before it is passed to the dialogfilter layer where it is done as well
-            if(TransactionState._TERMINATED != getInternalState()) {
+            if(TransactionState._TERMINATED != getInternalState() && (code != 100)) {
                 dialog.setLastResponse(this, sipResponse);
             }
         }
