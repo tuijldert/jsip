@@ -70,7 +70,7 @@ public interface StackLogger extends LogLevels {
      */
     public boolean isLoggingEnabled();
     /**
-     * Return true/false if loging is enabled at a given level.
+     * Return true/false if logging is enabled at a given level.
      *
      * @param logLevel
      */

@@ -3550,7 +3550,7 @@ public class SIPDialog implements javax.sip.Dialog, DialogExt {
                                     .cancel(this.earlyStateTimerTask);
                         }
                         logger.logDebug(
-                                "EarlyStateTimerTask craeted "
+                                "EarlyStateTimerTask created "
                                         + this.earlyDialogTimeout * 1000);
                         this.earlyStateTimerTask = new EarlyStateTimerTask();
                         if (sipStack.getTimer() != null && sipStack.getTimer().isStarted() ) {
