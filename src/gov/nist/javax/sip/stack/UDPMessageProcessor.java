@@ -30,7 +30,6 @@ package gov.nist.javax.sip.stack;
 
 import gov.nist.core.CommonLogger;
 import gov.nist.core.HostPort;
-import gov.nist.core.InternalErrorHandler;
 import gov.nist.core.LogWriter;
 import gov.nist.core.StackLogger;
 import gov.nist.core.ThreadAuditor;
@@ -46,6 +45,9 @@ import java.net.UnknownHostException;
 import java.util.LinkedList;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+
+import javax.sip.IOExceptionEvent;
+import javax.sip.SipListener;
 
 /**
  * Sit in a loop and handle incoming udp datagram messages. For each Datagram
@@ -109,7 +111,9 @@ public class UDPMessageProcessor extends MessageProcessor {
     private static final int LOWAT=2500;
 
     private int maxMessageSize = SipStackImpl.MAX_DATAGRAM_SIZE;
-    
+    private int exceptionCounter;
+    private static final int MAX_EXCEPTIONS = 10;
+
     /**
      * Constructor.
      *
@@ -226,7 +230,7 @@ public class UDPMessageProcessor extends MessageProcessor {
                 // this.useCount++;
                 if (sipStack.threadPoolSize != -1) {
                     // Note: the only condition watched for by threads
-                    // synchronizing on the messageQueue member is that it is
+                    // Synchronising on the messageQueue member is that it is
                     // not empty. As soon as you introduce some other
                     // condition you will have to call notifyAll instead of
                     // notify below.
@@ -236,31 +240,62 @@ public class UDPMessageProcessor extends MessageProcessor {
                 } else {
                     new UDPMessageChannel(sipStack, this, packet);
                 }
+                exceptionCounter = 0;           // reset flooding checker
             } catch (SocketTimeoutException ex) {
-              // This socket timeout alows us to ping the thread auditor periodically
+              // This socket timeout allows us to ping the thread auditor periodically
             } catch (SocketException ex) {
-                if (logger.isLoggingEnabled(LogWriter.TRACE_DEBUG))
-                    logger
-                            .logDebug("UDPMessageProcessor: Stopping");
-                isRunning = false;
+                //logger.logError("UDPMessageProcessor: SocketException", ex);
+                //isRunning = false;
+                reportSocketException(ex);       // report exception but try to continue to receive data ...
             } catch (IOException ex) {
-                isRunning = false;
-                ex.printStackTrace();
-                if (logger.isLoggingEnabled(LogWriter.TRACE_DEBUG))
-                    logger
-                            .logDebug("UDPMessageProcessor: Got an IO Exception");
+                //isRunning = false;
+                //ex.printStackTrace();
+                //logger.logWarning("UDPMessageProcessor: Got an IO Exception");
+                reportSocketException(ex);       // report exception but try to continue to receive data ...
             } catch (Exception ex) {
-                if (logger.isLoggingEnabled(LogWriter.TRACE_DEBUG))
-                    logger
-                            .logDebug("UDPMessageProcessor: Unexpected Exception - quitting");
-                InternalErrorHandler.handleException(ex);
-                return;
+                //logger.logWarning("UDPMessageProcessor: Unexpected Exception - quitting");
+                //InternalErrorHandler.handleException(ex);
+                //return;
+                reportSocketException(ex);       // report exception but try to continue to receive data ...
             }
         }
     }
 
+    private void reportSocketException(Exception e) {
+        String msg = String.format("Caught '%s' on UDP receive socket on %s:%s, message '%s'. Trying to ignore it ...",
+                e.getClass().getSimpleName(), sock.getLocalAddress().getHostAddress(), getPort(), e.getMessage());
+        if( exceptionCounter < MAX_EXCEPTIONS ) {
+            exceptionCounter++;
+            logger.logError(msg, e);
+        } else {
+            SipListener listener = sipStack.getSipListener();
+            if( listener != null ) {
+                listener.processIOException( new SocketIOExceptionEvent(msg));
+            }
+            isRunning = false;
+        }
+    }
+
     /**
-     * Shut down the message processor. Close the socket for recieving incoming
+     * Helper class used to give a more detailed log output in its toString() method
+     */
+    private class SocketIOExceptionEvent extends IOExceptionEvent {
+        private static final long serialVersionUID = 778500971662697296L;
+        private final String msg;
+
+        public SocketIOExceptionEvent(String msg) {
+            super(UDPMessageProcessor.this, sock.getLocalAddress().getHostAddress(), port, transport);
+            this.msg = msg;
+        }
+        
+        @Override
+        public String toString() {
+            return msg;
+        }
+    }
+
+    /**
+     * Shut down the message processor. Close the socket for receiving incoming
      * messages.
      */
     public void stop() {
